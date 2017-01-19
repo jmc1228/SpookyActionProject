@@ -17,9 +17,8 @@ const int optical_In3 = 9;
 /*** ASSIGNING PIN NUMBERS FOR ARDUINO I/O ***/
 
 /*** ASSIGNING THRESHOLDS TO BE USED IN CODE ***/
-const int LOOKINGTIMETHRESHOLD = 300; //minimum time to trigger 'looking' state change
 unsigned long STROBEFLASHTIME = 30;  //sets strobe 'on' time
-const int CANDIDATETHRESHOLD = 100;  //sets minimum duration of candidate pulse
+const int CANDIDATETHRESHOLD = 50;  //sets minimum duration of candidate pulse
 /*** ASSIGNING THRESHOLDS TO BE USED IN CODE***/
 
 /*** ASSIGNING STATE VARIABLES ***/
