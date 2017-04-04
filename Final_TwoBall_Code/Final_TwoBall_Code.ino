@@ -64,7 +64,7 @@ int collapsed_state = 0;
 int collapsed_state_for_other_ball = 255; 
 
 //N is the number of strobe states desired when not looking
-int N = 4; 
+int N = 8; 
 
 //this ensures that an extra flash isn't scheduled when the ball returns close to the breakbeam position
 int bonus_flash_counter = 0; 
