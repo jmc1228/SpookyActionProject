@@ -1,5 +1,6 @@
 #include <SoftwareSerial.h>
 
+
 /*** ASSIGNING PIN NUMBERS FOR ARDUINO I/O ***/
 
 
@@ -13,24 +14,27 @@ const int strobePin = 4; //digital output to strobe
 
 
 //digital inputs from IR receivers
-const int optical_In1 = 7; 
-const int optical_In2 = 8; 
-const int optical_In3 = 9; 
-const int RX = 10; 
-const int TX = 11; 
+const int optical_In1 = 11; 
+const int optical_In2 = 12; 
+const int optical_In3 = 13; 
+const int RX = 8; 
+const int TX = 9; 
 //initialize software serial using pins 10,11 
 SoftwareSerial mySerial(RX,TX); //RX, TX
 /*** ASSIGNING PIN NUMBERS FOR ARDUINO I/O ***/
 
 /*** ASSIGNING THRESHOLDS TO BE USED IN CODE ***/
 unsigned long STROBEFLASHTIME = 10;  //sets strobe 'on' time
-const int CANDIDATETHRESHOLD = 50;  //sets minimum duration of candidate pulse
+const int CANDIDATETHRESHOLD = 100;  //sets minimum duration of candidate pulse
 /*** ASSIGNING THRESHOLDS TO BE USED IN CODE***/
 
 /*** ASSIGNING STATE VARIABLES ***/
 bool breakbeam = false; //whether breakbeam has triggered
 bool looking = false;   //whether user is looking at ball
+bool looking_remote = false; 
+bool looking_local = false; 
 bool lookingtemp = false; 
+bool looking_change_local = true;  
 
 //states of individual 'looking' detectors
 bool optical_In1_state = false; 
@@ -47,7 +51,7 @@ volatile unsigned long now = NULL;
 
 //these track timing of events using millis()
 unsigned long candidate_change = NULL;      //time index of candidate 'looking' event
-unsigned long last_looking_change = NULL;   //time index of the last time 'looking' has changed
+  
 unsigned long next = NULL;                  //time index of next scheduled strobe flash
 unsigned long last_breakbeam = NULL;  //time index of last time the breakbeam triggered a strobe flash
 unsigned long last_flash = NULL;            //time index of last time any strobe flash was triggered
@@ -60,7 +64,7 @@ int collapsed_state = 0;
 int collapsed_state_for_other_ball = 255; 
 
 //N is the number of strobe states desired when not looking
-int N = 2; 
+int N = 4; 
 
 //this ensures that an extra flash isn't scheduled when the ball returns close to the breakbeam position
 int bonus_flash_counter = 0; 
@@ -95,7 +99,7 @@ void setup() {
   Serial.begin(9600); 
 
   //begin mySerial, used for communication between two Arduinos
-  mySerial.begin(9600); 
+  mySerial.begin(115200); 
   
   while(! Serial); 
   Serial.println("Here we go!"); 
@@ -103,7 +107,6 @@ void setup() {
 
 //this is the main loop, which is called endlessly
 void loop() {
-
   //assign 'now' to current time, for consistency across all functions 
   now = millis(); 
 
@@ -114,16 +117,24 @@ void loop() {
   //if data == 255, this means that the user is not looking at the other ball, meaning we should go ahead
   //and check if they are looking at this ball
   if(data == 255){
-      //function to check if the user is looking at the ball or not
+      //function to check if the user is looking at the ball or not 
+      looking_remote = false; 
       lookingCheck();   
   }
   //the user is looking at the other ball, so assume the opposing collapsed state as transmitted via serial 
   else{
-    looking = true; 
+    looking_remote = true; 
     collapsed_state = data; 
   }
-
-  //function to schedule strobe flashes 
+  looking = looking_local || looking_remote; 
+ 
+  if(looking_change_local == true){
+     sendData();
+     looking_change_local = false; 
+  }
+   
+  
+   //function to schedule strobe flashes 
   flashScheduler(); 
 
   //function to trigger strobe flashes
@@ -131,6 +142,25 @@ void loop() {
   
 }
 
+void sendData(){
+  if(looking_local == true){
+            collapsed_state = int(random(0,N)); 
+
+            //calculate the desired state of the other ball
+            collapsed_state_for_other_ball = ((N / 2) + collapsed_state) % N; 
+
+            //send over the state of the other ball
+            Serial.print("Sending: "); 
+            Serial.println(byte(collapsed_state_for_other_ball));
+            mySerial.write(byte(collapsed_state_for_other_ball)); 
+          // mySerial.write(byte(1)); 
+  }
+  else if(looking_local == false){
+           Serial.print("Sending"); 
+           Serial.println(byte(255)); 
+            mySerial.write(byte(255));  
+  }
+}
 /*******/
 //the checkOtherBall() function receives the opposing ball position via software serial when the user is looking at the other ball
 /*******/
@@ -138,7 +168,9 @@ void loop() {
 void checkOtherBall(){
   if(mySerial.available()){
     data = mySerial.read(); 
-  }
+    Serial.print("reading data:"); 
+    Serial.println(data); 
+   }
 }
 
 /*******/
@@ -155,63 +187,39 @@ void breakBeamCheck(){
 //Note that lookingCheck() uses the CANDIDATETHRESHOLD value to filter out spurious signals
 /******/
 void lookingCheck(){
-  
-  //read the optical inputs
+   //read the optical inputs
   optical_In1_state = digitalRead(optical_In1); 
   optical_In2_state = digitalRead(optical_In2); 
   optical_In3_state = digitalRead(optical_In3); 
-  
-
+ 
   //perform logical OR of optical inputs, so that any one will trigger a change
   //note that the IR receiver outputs go low when a signal is present, so we invert each sensor's state to maintain the idea that 'true' = 'signal present'
   //also note that we only populate a temporary variable until the state change is verified as legitimate
-  if(!optical_In1_state || !optical_In2_state || !optical_In3_state){ 
-    lookingtemp = true;  
+   if(!optical_In1_state || !optical_In2_state || !optical_In3_state){ 
+    lookingtemp = true;
   }
   else{
     lookingtemp = false; 
   }
-
   //if the looking state has changed
-  if(lookingtemp != looking){
+  if(lookingtemp != looking_local){
     //and if there isn't a candidate change we're waiting to evaluate
     if(!candidate_change){
           //record a new candidate change
           candidate_change = now; 
     }
+   
     //if there is a candidate change already, and it it longer than the threshold
     if(((now - candidate_change) > CANDIDATETHRESHOLD)){
         //then there really is a change in looking state!
         //record the new time, and update looking state
-
-        
-        if(lookingtemp == true){
-            //set the current ball's state to a random integer position between 0 and N 
-            collapsed_state = int(random(0,N)); 
-
-            //calculate the desired state of the other ball
-            collapsed_state_for_other_ball = ((N / 2) + collapsed_state) % N; 
-
-            //send over the state of the other ball
-            mySerial.write(byte(collapsed_state_for_other_ball)); 
-           // Serial.println(byte(collapsed_state_for_other_ball)); 
-
-        }
-
-        //alert other ball if user has stopped looking
-        else if(lookingtemp == false){
-          mySerial.write(byte(255)); 
-        //  Serial.println(byte(255)); 
-        }
-        
-        
-        last_looking_change = now; 
-        looking = lookingtemp;  
+        looking_change_local = true; 
+        looking_local = lookingtemp;  
     }    
   }
   //either nothing new has happened, or there was a very fast change between sensor reads
   //in either case, there probably wasn't a legitimate signal, so reset the candidate change (start looking for a new one)
-  else if(lookingtemp == looking){
+  else if(looking_local == lookingtemp){
     candidate_change = NULL; 
   }
 }
@@ -235,7 +243,7 @@ void flashScheduler(){
 
  
           if(!looking){
-            next = now; 
+            next = now;  
           }
           else{
             next = now + global_period / N * collapsed_state; 
@@ -266,11 +274,11 @@ void flash(){
            digitalWrite(strobePin, HIGH);
            digitalWrite(led, HIGH);
            last_flash = next;  
+            
         }
        //or it's time for the strobe to be off (minimum 'on' time has elapsed)
         if(now >= (STROBEFLASHTIME + next)){
-          //Serial.println("There"); 
-          //turn the strobe off, and clear 'next', which indicates no new flashes are scheduled
+           //turn the strobe off, and clear 'next', which indicates no new flashes are scheduled
            digitalWrite(strobePin, LOW);
            digitalWrite(led, LOW);
            next = NULL; 
