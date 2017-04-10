@@ -25,7 +25,7 @@ SoftwareSerial mySerial(RX,TX); //RX, TX
 
 /*** ASSIGNING THRESHOLDS TO BE USED IN CODE ***/
 unsigned long STROBEFLASHTIME = 10;  //sets strobe 'on' time
-const int CANDIDATETHRESHOLD = 100;  //sets minimum duration of candidate pulse
+const int CANDIDATETHRESHOLD = 50;  //sets minimum duration of candidate pulse
 /*** ASSIGNING THRESHOLDS TO BE USED IN CODE***/
 
 /*** ASSIGNING STATE VARIABLES ***/
